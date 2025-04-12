@@ -3,9 +3,11 @@ const mongoose = require("mongoose");
 // Define the Event schema with its fields and validations
 const EventSchema = new mongoose.Schema({
   title: { type: String, required: true },
-  date: { type: Date, required: true },
+  startTime: { type: Date, required: true },
+  durationMinutes: { type: Number, required: true }, // eg: 90 表示1.5小时
   location: { type: String, required: true },
   maxParticipants: { type: Number, required: true },
+  description: { type: String, default: "" }, 
   category: { 
     type: String, 
     required: true, 

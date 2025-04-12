@@ -106,6 +106,18 @@ router.get("/me", authMiddleware, async (req, res) => {
   }
 });
 
+// 📌 Get user info by ID（用于获取活动发起人信息）
+router.get("/users/:id", authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id).select("-password");
+    if (!user) return res.status(404).json({ message: "用户不存在" });
+
+    res.json(user);
+  } catch (error) {
+    res.status(500).json({ message: "服务器错误" });
+  }
+});
+
 
 // ✏️ 管理员修改任意用户信息（或者你自己手动修改自己也行）
 router.patch("/:id", async (req, res, next) => {
@@ -127,6 +139,25 @@ router.patch("/:id", async (req, res, next) => {
     next(error);
   }
 });
+
+// ✅ 查用户名是否存在
+router.get("/check-username", async (req, res) => {
+  const { username } = req.query;
+  if (!username) return res.status(400).json({ message: "用户名不能为空" });
+
+  const exists = await User.exists({ username });
+  res.json({ exists: !!exists });
+});
+
+// ✅ 查邮箱是否存在
+router.get("/check-email", async (req, res) => {
+  const { email } = req.query;
+  if (!email) return res.status(400).json({ message: "邮箱不能为空" });
+
+  const exists = await User.exists({ email });
+  res.json({ exists: !!exists });
+});
+
 
 
 module.exports = router;
