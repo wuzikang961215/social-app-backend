@@ -20,7 +20,76 @@ router.get("/", authMiddleware, async (req, res, next) => {
     next(error);  // Pass error to middleware
   }
 });
+
+// 📌 只返回自己创建的、包含 pending / approved 用户的活动
+router.get("/manage", authMiddleware, async (req, res, next) => {
+  try {
+    const events = await Event.find({ creator: req.user.id })
+      .populate("participants.user", "username isVIP score idealBuddy whyJoin interests")
+      .populate("creator", "username email");
+
+    // ✅ 过滤参与者，同时只返回至少包含一位的活动
+    const filteredEvents = events
+      .map(event => {
+        const relevantParticipants = event.participants.filter(p =>
+          ["pending", "approved"].includes(p.status)
+        );
+
+        if (relevantParticipants.length === 0) return null;
+
+        return {
+          ...event.toJSON(),
+          participants: relevantParticipants,
+        };
+      })
+      .filter(Boolean); // 移除 null 项（即无 relevantParticipants 的活动）
+
+    res.json(filteredEvents);
+  } catch (error) {
+    next(error);
+  }
+});
+
   
+// 📌 获取我创建的所有活动（不限制参与者状态）
+router.get("/my-created", authMiddleware, async (req, res, next) => {
+  try {
+    const events = await Event.find({ creator: req.user.id })
+      .populate("participants.user", "username isVIP score idealBuddy whyJoin interests")
+      .populate("creator", "username email");
+
+    res.json(events);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 📌 获取我参与的活动（排除被拒绝 / 已取消）
+router.get("/my-participated", authMiddleware, async (req, res, next) => {
+  try {
+    const events = await Event.find({
+      "participants.user": req.user.id,
+    })
+      .populate("participants.user", "username isVIP score idealBuddy whyJoin interests")
+      .populate("creator", "username email");
+
+    const filtered = events
+      .map((event) => {
+        const me = event.participants.find(
+          (p) =>
+            p.user.toString() === req.user.id &&
+            !["denied", "cancelled"].includes(p.status)
+        );
+        return me ? event.toJSON() : null;
+      })
+      .filter(Boolean);
+
+    res.json(filtered);
+  } catch (error) {
+    next(error);
+  }
+});
+
 
 // 📌 Get a single event by ID
 router.get("/:id", authMiddleware, async (req, res, next) => {
@@ -35,6 +104,7 @@ router.get("/:id", authMiddleware, async (req, res, next) => {
       next(error);
     }
   });
+  
   
 
 router.post("/", authMiddleware, rateLimiter, async (req, res, next) => {
@@ -74,6 +144,11 @@ router.post("/", authMiddleware, rateLimiter, async (req, res, next) => {
 // 📌 Update event information
 router.patch("/:id", authMiddleware, rateLimiter, async (req, res, next) => {
   try {
+    // ✅ 管理员权限判断
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ message: "仅管理员可修改活动信息" });
+    }
+
     const updateData = req.body;
 
     const updatedEvent = await Event.findByIdAndUpdate(
@@ -96,6 +171,11 @@ router.patch("/:id", authMiddleware, rateLimiter, async (req, res, next) => {
 // 📌 Delete event
 router.delete("/:id", authMiddleware, async (req, res, next) => {
   try {
+    // ✅ 管理员权限判断
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ message: "仅管理员可删除活动" });
+    }
+
     const event = await Event.findById(req.params.id);
     if (!event) {
       const err = new Error("Event not found");
@@ -118,6 +198,11 @@ router.post("/:id/join", authMiddleware, async (req, res, next) => {
     if (!event) return res.status(404).json({ message: "活动未找到" });
 
     const userId = req.user.id;
+
+    // ✅ 阻止发起人报名自己的活动
+    if (event.creator.toString() === userId) {
+      return res.status(403).json({ message: "你是该活动的发起人，无法报名自己的活动" });
+    }
 
     // 查找是否已经参与
     const existing = event.participants.find(p => p.user.toString() === userId);
@@ -193,7 +278,7 @@ router.post("/:id/leave", authMiddleware, async (req, res, next) => {
 });
 
   
-// POST /api/events/:id/review
+// POST /api/events/:id/review ✅ 只允许审核 pending 用户
 router.post("/:id/review", authMiddleware, async (req, res, next) => {
   try {
     const { userId, approve } = req.body;
@@ -207,9 +292,8 @@ router.post("/:id/review", authMiddleware, async (req, res, next) => {
     const participant = event.participants.find((p) => p.user.toString() === userId);
     if (!participant) return res.status(404).json({ message: "未找到该报名用户" });
 
-    // ✅ 只允许审核 pending 或 denied 的用户
-    if (!["pending", "denied"].includes(participant.status)) {
-      return res.status(400).json({ message: "只能审核待审核或被拒绝的用户" });
+    if (participant.status !== "pending") {
+      return res.status(400).json({ message: "只能审核待审核用户" });
     }
 
     participant.status = approve ? "approved" : "denied";
@@ -219,82 +303,57 @@ router.post("/:id/review", authMiddleware, async (req, res, next) => {
       .populate("participants.user", "username level score isVIP")
       .lean();
 
-    // 清洗 _id（如你想保持统一结构）
     populated.participants = populated.participants.map(p => ({
       user: p.user,
       status: p.status,
       cancelCount: p.cancelCount,
     }));
 
-    res.json({ message: "审核完成", event });
+    res.json({ message: "审核完成", event: populated });
   } catch (error) {
     next(error);
   }
 });
 
-// POST /api/events/:id/checkin
-router.post("/:id/checkin", authMiddleware, async (req, res, next) => {
+
+// ✅ 合并签到与放鸽子为 /attendance
+// POST /api/events/:id/attendance
+router.post("/:id/attendance", authMiddleware, async (req, res, next) => {
   try {
-    const { userId } = req.body;
+    const { userId, attended } = req.body;  // attended: true 或 false
     const event = await Event.findById(req.params.id);
     if (!event) return res.status(404).json({ message: "活动未找到" });
 
     if (event.creator.toString() !== req.user.id) {
-      return res.status(403).json({ message: "只有活动创建者可以签到" });
+      return res.status(403).json({ message: "只有活动创建者可以操作出勤" });
     }
 
     const participant = event.participants.find((p) => p.user.toString() === userId);
     if (!participant) return res.status(404).json({ message: "未找到该报名用户" });
 
-    if (!["approved", "noShow"].includes(participant.status)) {
-      return res.status(400).json({ message: "仅已通过或者标记失误的用户可签到" });
+    if (participant.status !== "approved") {
+      return res.status(400).json({ message: "只能操作已通过的用户" });
     }
 
-    participant.status = "checkedIn";
+    participant.status = attended ? "checkedIn" : "noShow";
     await event.save();
 
     const populated = await Event.findById(event.id)
       .populate("participants.user", "username level score isVIP")
       .lean();
 
-    // 清洗每项 _id
     populated.participants = populated.participants.map(p => ({
       user: p.user,
       status: p.status,
       cancelCount: p.cancelCount,
     }));
 
-    res.json({ message: "签到成功", event });
+    res.json({ message: attended ? "签到成功" : "已标记为 no-show", event: populated });
   } catch (error) {
     next(error);
   }
 });
 
-// POST /api/events/:id/noshow
-router.post("/:id/noshow", authMiddleware, async (req, res, next) => {
-  try {
-    const { userId } = req.body;
-    const event = await Event.findById(req.params.id);
-    if (!event) return res.status(404).json({ message: "活动未找到" });
-
-    if (event.creator.toString() !== req.user.id) {
-      return res.status(403).json({ message: "只有活动创建者可以标记放鸽子" });
-    }
-
-    const participant = event.participants.find((p) => p.user.toString() === userId);
-    if (!participant) return res.status(404).json({ message: "未找到该报名用户" });
-
-    if (!["approved", "checkedIn"].includes(participant.status)) {
-      return res.status(400).json({ message: "只有已通过审核或标记失误的用户可以被标记为 no-show" });
-    }
-
-    participant.status = "noShow";
-    await event.save();
-    res.json({ message: "已标记为 no-show", event });
-  } catch (error) {
-    next(error);
-  }
-});
 
 // POST /api/events/:id/request-cancel
 router.post("/:id/request-cancel", authMiddleware, async (req, res, next) => {
@@ -350,6 +409,38 @@ router.post("/:id/review-cancel", authMiddleware, async (req, res, next) => {
     next(error);
   }
 });
+
+// DELETE /api/events/:id/participant/:userId
+router.delete("/:id/participant/:userId", authMiddleware, async (req, res, next) => {
+  try {
+    const { id, userId } = req.params;
+    const event = await Event.findById(id);
+
+    if (!event) return res.status(404).json({ message: "活动未找到" });
+
+    // 权限验证
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ message: "你没有权限移除该用户" });
+    }
+
+    const beforeLength = event.participants.length;
+
+    // 只保留非目标用户
+    event.participants = event.participants.filter(
+      (p) => p.user.toString() !== userId
+    );
+
+    if (event.participants.length === beforeLength) {
+      return res.status(404).json({ message: "该用户未报名此活动" });
+    }
+
+    await event.save();
+    res.json({ message: "已成功移除该用户", event });
+  } catch (error) {
+    next(error);
+  }
+});
+
 
 
 
