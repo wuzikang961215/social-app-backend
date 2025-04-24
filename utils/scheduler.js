@@ -8,7 +8,7 @@ cron.schedule("0 * * * *", async () => {
     const now = new Date();
 
     const result = await Event.updateMany(
-      { date: { $lt: now }, expired: false },
+      { startTime: { $lt: now }, expired: false },
       { $set: { expired: true } }
     );
 

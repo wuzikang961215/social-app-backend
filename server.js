@@ -30,11 +30,11 @@ app.get("/", (req, res) => {
   res.send("API is running...");
 });
 
-const PORT = process.env.PORT;
+const PORT = process.env.PORT || 3002;
 
 // Only start the server in non-test environment
 if (process.env.NODE_ENV !== "test") {
-  app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+  app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Server running on port ${PORT}`));
 }
 
 module.exports = app; // ✅ Important: Export `app` for Jest to use directly

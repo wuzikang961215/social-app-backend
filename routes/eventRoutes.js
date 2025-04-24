@@ -77,7 +77,7 @@ router.get("/my-participated", authMiddleware, async (req, res, next) => {
       .map((event) => {
         const me = event.participants.find(
           (p) =>
-            p.user.toString() === req.user.id &&
+            p.user.id === req.user.id &&
             !["denied", "cancelled"].includes(p.status)
         );
         return me ? event.toJSON() : null;
@@ -89,6 +89,7 @@ router.get("/my-participated", authMiddleware, async (req, res, next) => {
     next(error);
   }
 });
+
 
 
 // 📌 Get a single event by ID
