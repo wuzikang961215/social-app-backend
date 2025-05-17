@@ -1,4 +1,6 @@
 const Event = require('../models/Event');
+const User = require('../models/User');
+
 
 class EventService {
   // Find events with optional category filter
@@ -60,11 +62,15 @@ class EventService {
       .populate('creator', 'username email');
   }
 
-  // Create new event
   async createEvent(eventData) {
+    const user = await User.findById(eventData.creator);
+    if (!user || (user.score ?? 0) < 30) {
+      throw new Error("积分不足，无法创建活动");
+    }
+  
     const newEvent = new Event(eventData);
-    return newEvent.save();
-  }
+    return await newEvent.save(); // ✅ 这里不扣分
+  }  
 
   // Update event
   async updateEvent(eventId, updateData) {
@@ -164,7 +170,36 @@ class EventService {
     if (participant.status !== 'approved') throw new Error('只能操作已通过的用户');
 
     participant.status = attended ? 'checkedIn' : 'noShow';
+
+    // ✅ 实时加分逻辑
+    const user = await User.findById(userId);
+    if (user) {
+      if (attended) {
+        user.score = (user.score || 0) + 5;
+      } else {
+        user.score = (user.score || 0) - 10;
+      }
+      await user.save();
+    }
+    
     await event.save();
+
+    // ✅ 如果是签到，则更新主办人积分
+    if (attended) {
+      const checkedInCount = event.participants.filter(p => p.status === "checkedIn").length;
+
+      const host = await User.findById(creatorId);
+      if (host) {
+        if (checkedInCount === 1) {
+          // 第一个签到，加 5（基础）+ 1（每人）
+          host.score = (host.score || 0) + 6;
+        } else {
+          // 后续每个签到加 1 分
+          host.score = (host.score || 0) + 1;
+        }
+        await host.save();
+      }
+    }
 
     return Event.findById(event.id)
       .populate('participants.user', 'username level score isVIP')

@@ -24,4 +24,8 @@ router.get("/check-username", authController.checkUsername);
 // ✅ 查邮箱是否存在
 router.get("/check-email", authController.checkEmail);
 
+// ✅ 获取用户数量
+router.get("/count", authController.getUserCount);
+
+
 module.exports = router;

@@ -62,6 +62,16 @@ class AuthController {
     const exists = await authService.checkEmail(email);
     res.json({ exists });
   }
+
+  async getUserCount(req, res) {
+    try {
+      const count = await authService.getUserCount();
+      res.json({ count });
+    } catch (error) {
+      res.status(500).json({ message: "获取用户数量失败" });
+    }
+  }
+
 }
 
 module.exports = new AuthController();

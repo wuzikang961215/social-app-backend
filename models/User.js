@@ -23,7 +23,7 @@ const UserSchema = new mongoose.Schema({
 
   role: { type: String, enum: ["user", "admin"], default: "user" },
   isVIP: { type: Boolean, default: false },
-  score: { type: Number, default: 0 },
+  score: { type: Number, default: 30 },
 }, { timestamps: true });
 
 // 📌 Encrypt password before saving user

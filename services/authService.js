@@ -33,6 +33,10 @@ class AuthService {
     return User.findById(userId).select("-password");
   }
 
+  async getUserCount() {
+    return User.countDocuments();
+  }
+
   async updateUser(userId, updateData, requesterRole) {
     if (requesterRole !== "admin") throw new Error("无权限操作（仅限超级管理员）");
     if (updateData.password) {
