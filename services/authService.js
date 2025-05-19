@@ -8,8 +8,7 @@ class AuthService {
     const existingUser = await User.findOne({ $or: [{ username }, { email }] });
     if (existingUser) throw new Error("用户名或邮箱已被使用");
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const newUser = new User({ username, email, password: hashedPassword, ...rest });
+    const newUser = new User({ username, email, password, ...rest });
     await newUser.save();
     return newUser;
   }
