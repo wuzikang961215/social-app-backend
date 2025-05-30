@@ -85,6 +85,7 @@ class EventService {
   async deleteEvent(eventId) {
     return Event.findByIdAndDelete(eventId);
   }
+ 
 
   // Join event
   async joinEvent(eventId, userId) {
@@ -93,6 +94,12 @@ class EventService {
 
     if (event.creator.toString() === userId) {
       throw new Error('你是该活动的发起人，无法报名自己的活动');
+    }
+
+    // ✅ 只统计已通过的人数（approved）
+    const approvedCount = event.participants.filter(p => p.status === 'approved').length;
+    if (approvedCount >= event.maxParticipants) {
+      throw new Error('活动名额已满，无法报名');
     }
 
     const existing = event.participants.find(p => p.user.toString() === userId);
@@ -116,6 +123,7 @@ class EventService {
     await event.save();
     return Event.findById(event.id).populate('participants.user');
   }
+
 
   // Leave event
   async leaveEvent(eventId, userId) {
