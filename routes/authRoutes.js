@@ -10,13 +10,13 @@ router.post("/register", authController.register);
 router.post("/login", authController.login);
 
 // 📌 Get current user information
-router.get("/me", authMiddleware, authController.getMe);
+router.get("/users/me", authMiddleware, authController.getMe);
 
 // 📌 Get user info by ID（用于获取活动发起人信息）
 router.get("/users/:id", authMiddleware, authController.getUserById);
 
 // ✏️ 管理员修改任意用户信息（或者你自己手动修改自己也行）
-router.patch("/:id", authMiddleware, authController.updateUser);
+router.patch("/users/:id", authMiddleware, authController.updateUser);
 
 // ✅ 查用户名是否存在
 router.get("/check-username", authController.checkUsername);
@@ -25,7 +25,7 @@ router.get("/check-username", authController.checkUsername);
 router.get("/check-email", authController.checkEmail);
 
 // ✅ 获取用户数量
-router.get("/count", authController.getUserCount);
+router.get("/users/count", authController.getUserCount);
 
 
 module.exports = router;
