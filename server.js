@@ -10,10 +10,19 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
+// ✅ 路由
 const eventRoutes = require("./routes/eventRoutes");
-app.use("/api/events", eventRoutes);
 const authRoutes = require("./routes/authRoutes");
-app.use("/api/auth", authRoutes);
+const userRoutes = require("./routes/userRoutes");
+const statsRoutes = require("./routes/statsRoutes");
+
+app.use("/api/events", eventRoutes);
+app.use("/api/auth", authRoutes);    // 登录注册
+app.use("/api/users", userRoutes);   // 用户信息
+app.use("/api/stats", statsRoutes);  // 统计/兴趣/邮箱名查重
+
+
+
 app.use(morgan("dev"));
 
 // 连接 MongoDB

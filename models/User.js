@@ -10,18 +10,10 @@ const UserSchema = new mongoose.Schema({
   interests: [String],
   tags: [String],
 
-  canJoinPaid: Boolean,
-  canJoinPaidMonthly: Boolean,
-  canJoinFree: Boolean,
-  canJoinFreeMonthly: Boolean,
-
-  expectPaid: String,
-  expectFree: String,
   whyJoin: String,
   idealBuddy: String,
-  willPromote: Boolean,
 
-  role: { type: String, enum: ["user", "admin"], default: "user" },
+  role: { type: String, enum: ["user", "admin", "organizer"], default: "user" },
   isVIP: { type: Boolean, default: false },
   score: { type: Number, default: 30 },
 }, { timestamps: true });
