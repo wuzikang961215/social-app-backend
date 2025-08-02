@@ -13,9 +13,7 @@ const UserSchema = new mongoose.Schema({
   whyJoin: String,
   idealBuddy: String,
 
-  role: { type: String, enum: ["user", "admin", "organizer"], default: "user" },
-  isVIP: { type: Boolean, default: false },
-  score: { type: Number, default: 30 },
+  role: { type: String, enum: ["user", "admin"], default: "user" },
 }, { timestamps: true });
 
 // 📌 Encrypt password before saving user

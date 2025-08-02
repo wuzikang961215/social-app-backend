@@ -1,20 +1,49 @@
 const Event = require('../models/Event');
 const User = require('../models/User');
+const Notification = require('../models/Notification');
+const { formatToSydneyString, hasEventExpired, formatToHumanReadable } = require('../utils/dateUtils');
 
 
 class EventService {
   // Find events with optional category filter
   async findEvents(category = null) {
     const filter = category ? { category } : {};
-    return Event.find(filter)
-      .populate('participants.user', 'username email')
-      .populate('creator', 'username email');
+    
+    // Only get non-expired events and limit to 50 most recent
+    const events = await Event.find({ ...filter, expired: false })
+      .select('-__v')
+      .populate('participants.user', 'username')  // Only username needed
+      .populate('creator', 'username')  // Only username needed
+      .sort({ startTime: 1 })  // Sort by start time ascending
+      .limit(50)  // Limit to 50 events
+      .lean()
+      .exec();
+    
+    // Transform _id to id for each event when using lean()
+    return events.map(event => ({
+      ...event,
+      id: event._id.toString(),
+      _id: undefined,
+      creator: event.creator ? {
+        ...event.creator,
+        id: event.creator._id ? event.creator._id.toString() : event.creator.id,
+        _id: undefined
+      } : null,
+      participants: event.participants?.map(p => ({
+        ...p,
+        user: p.user ? {
+          ...p.user,
+          id: p.user._id ? p.user._id.toString() : p.user.id,
+          _id: undefined
+        } : p.user
+      })) || []
+    }));
   }
 
   // Find manageable events for a user
   async findManageableEvents(userId) {
     const events = await Event.find({ creator: userId })
-      .populate('participants.user', 'username isVIP score idealBuddy whyJoin interests')
+      .populate('participants.user', 'username idealBuddy whyJoin interests')
       .populate('creator', 'username email');
 
     return events
@@ -33,7 +62,7 @@ class EventService {
   // Find events created by user
   async findEventsByCreator(userId) {
     return Event.find({ creator: userId })
-      .populate('participants.user', 'username isVIP score idealBuddy whyJoin interests')
+      .populate('participants.user', 'username idealBuddy whyJoin interests')
       .populate('creator', 'username email');
   }
 
@@ -42,14 +71,16 @@ class EventService {
     const events = await Event.find({
       'participants.user': userId
     })
-      .populate('participants.user', 'username isVIP score idealBuddy whyJoin interests')
+      .populate('participants.user', 'username idealBuddy whyJoin interests')
       .populate('creator', 'username email');
 
     return events
       .map(event => {
-        const isParticipating = event.participants.find(
-          p => p.user.id === userId && !['denied', 'cancelled'].includes(p.status)
+        const participant = event.participants.find(
+          p => p.user.id === userId || p.user._id?.toString() === userId
         );
+        
+        const isParticipating = participant && !['cancelled'].includes(participant.status);
         return isParticipating ? event.toJSON() : null;
       })
       .filter(Boolean);
@@ -63,22 +94,103 @@ class EventService {
   }
 
   async createEvent(eventData) {
-    const user = await User.findById(eventData.creator);
-    if (!user || (user.score ?? 0) < 30) {
-      throw new Error("积分不足，无法创建活动");
-    }
-  
-    const newEvent = new Event(eventData);
-    return await newEvent.save(); // ✅ 这里不扣分
+    // Ensure startTime is in consistent Sydney format
+    const formattedData = {
+      ...eventData,
+      startTime: formatToSydneyString(eventData.startTime)
+    };
+    const newEvent = new Event(formattedData);
+    return await newEvent.save();
   }  
 
   // Update event
-  async updateEvent(eventId, updateData) {
-    return Event.findByIdAndUpdate(
+  async updateEvent(eventId, updateData, userId) {
+    console.log('Updating event:', { eventId, updateData, userId });
+    
+    const event = await Event.findById(eventId);
+    if (!event) throw new Error('活动未找到');
+    
+    // Check if user is the creator
+    if (event.creator.toString() !== userId) {
+      throw new Error('只有活动创建者可以修改活动信息');
+    }
+    
+    // Track if time or location changed for notifications
+    const timeChanged = updateData.startTime && updateData.startTime !== event.startTime;
+    const locationChanged = updateData.location && updateData.location !== event.location;
+    
+    // If maxParticipants is being updated, ensure it's not less than approved count
+    if (updateData.maxParticipants) {
+      const approvedCount = event.participants.filter(p => p.status === 'approved').length;
+      if (updateData.maxParticipants < approvedCount) {
+        throw new Error(`活动人数不能少于已通过的人数 (${approvedCount}人)`);
+      }
+    }
+    
+    // Format startTime if provided
+    if (updateData.startTime) {
+      updateData.startTime = formatToSydneyString(updateData.startTime);
+    }
+    
+    // Only allow updating specific fields
+    const allowedFields = ['title', 'location', 'startTime', 'durationMinutes', 'description', 'maxParticipants', 'category', 'tags'];
+    const filteredUpdate = {};
+    allowedFields.forEach(field => {
+      if (updateData[field] !== undefined) {
+        filteredUpdate[field] = updateData[field];
+      }
+    });
+    
+    const updatedEvent = await Event.findByIdAndUpdate(
       eventId,
-      updateData,
+      filteredUpdate,
       { new: true, runValidators: true }
-    );
+    ).populate('creator', 'username');
+    
+    // Send notifications if time or location changed
+    if ((timeChanged || locationChanged) && event.participants.length > 0) {
+      try {
+        const notificationService = require('./notificationService');
+        const approvedParticipants = event.participants
+          .filter(p => p.status === 'approved')
+          .map(p => p.user);
+        
+        if (approvedParticipants.length > 0) {
+          let message = `活动「${event.title}」`;
+          const metadata = {
+            eventTitle: event.title
+          };
+          
+          if (timeChanged && locationChanged) {
+            message += `的时间已更新为 ${formatToHumanReadable(updateData.startTime)}，地点已更新为 ${updateData.location}`;
+            metadata.eventTime = formatToSydneyString(updateData.startTime);
+            metadata.eventLocation = updateData.location;
+          } else if (timeChanged) {
+            message += `的时间已更新为 ${formatToHumanReadable(updateData.startTime)}`;
+            metadata.eventTime = formatToSydneyString(updateData.startTime);
+          } else if (locationChanged) {
+            message += `的地点已更新为 ${updateData.location}`;
+            metadata.eventLocation = updateData.location;
+          }
+          
+          await notificationService.createBulkNotifications(
+            approvedParticipants,
+            message,
+            'event_update',
+            { 
+              eventId,
+              title: '活动信息更新',
+              metadata
+            }
+          );
+        }
+      } catch (notificationError) {
+        console.error('Failed to send update notifications:', notificationError);
+        // Don't fail the update if notifications fail
+      }
+    }
+    
+    return updatedEvent;
   }
 
   // Delete event
@@ -104,10 +216,13 @@ class EventService {
 
     const existing = event.participants.find(p => p.user.toString() === userId);
     if (existing) {
-      if (existing.status === 'cancelled') {
-        if (existing.cancelCount >= 2) {
-          throw new Error('你已取消报名超过2次，不能再次加入');
-        }
+      // Check cancel count first for all statuses
+      if (existing.cancelCount >= 2) {
+        throw new Error('你已取消报名超过2次，不能再次加入');
+      }
+      
+      if (existing.status === 'cancelled' || existing.status === 'denied') {
+        // Allow both cancelled and denied users to rejoin
         existing.status = 'pending';
       } else {
         throw new Error('你已经报名过此活动');
@@ -132,7 +247,11 @@ class EventService {
 
     const participant = event.participants.find(p => p.user.toString() === userId);
     if (!participant) throw new Error('你未报名该活动');
-    if (participant.status !== 'pending') throw new Error('你已被审核，无法取消报名');
+    
+    // Allow pending and denied users to cancel
+    if (participant.status !== 'pending' && participant.status !== 'denied') {
+      throw new Error('你已被审核，无法取消报名');
+    }
 
     participant.status = 'cancelled';
     participant.cancelCount = (participant.cancelCount || 0) + 1;
@@ -153,9 +272,30 @@ class EventService {
 
     participant.status = approve ? 'approved' : 'denied';
     await event.save();
+    
+    // Only create notification for approval
+    if (approve) {
+      const creator = await User.findById(creatorId);
+      if (creator) {
+        await Notification.create({
+          recipient: userId,
+          sender: creatorId,
+          type: 'event_approved',
+          title: '活动申请已通过',
+          message: `恭喜！你申请参加的活动「${event.title}」已通过审核`,
+          eventId: event._id,
+          metadata: {
+            eventTitle: event.title,
+            eventTime: event.startTime,
+            eventLocation: event.location,
+            userName: creator.username
+          }
+        });
+      }
+    }
 
     return Event.findById(event.id)
-      .populate('participants.user', 'username level score isVIP')
+      .populate('participants.user', 'username')
       .lean()
       .then(populated => ({
         ...populated,
@@ -178,39 +318,10 @@ class EventService {
     if (participant.status !== 'approved') throw new Error('只能操作已通过的用户');
 
     participant.status = attended ? 'checkedIn' : 'noShow';
-
-    // ✅ 实时加分逻辑
-    const user = await User.findById(userId);
-    if (user) {
-      if (attended) {
-        user.score = (user.score || 0) + 5;
-      } else {
-        user.score = (user.score || 0) - 10;
-      }
-      await user.save();
-    }
-    
     await event.save();
 
-    // ✅ 如果是签到，则更新主办人积分
-    if (attended) {
-      const checkedInCount = event.participants.filter(p => p.status === "checkedIn").length;
-
-      const host = await User.findById(creatorId);
-      if (host) {
-        if (checkedInCount === 1) {
-          // 第一个签到，加 5（基础）+ 1（每人）
-          host.score = (host.score || 0) + 6;
-        } else {
-          // 后续每个签到加 1 分
-          host.score = (host.score || 0) + 1;
-        }
-        await host.save();
-      }
-    }
-
     return Event.findById(event.id)
-      .populate('participants.user', 'username level score isVIP')
+      .populate('participants.user', 'username')
       .lean()
       .then(populated => ({
         ...populated,

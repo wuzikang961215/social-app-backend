@@ -72,13 +72,7 @@ class EventController {
   // Update event
   async updateEvent(req, res, next) {
     try {
-      if (req.user.role !== 'admin') {
-        return res.status(403).json({ message: '仅管理员可修改活动信息' });
-      }
-      const updatedEvent = await eventService.updateEvent(req.params.id, req.body);
-      if (!updatedEvent) {
-        return res.status(404).json({ message: '活动未找到' });
-      }
+      const updatedEvent = await eventService.updateEvent(req.params.id, req.body, req.user.id);
       res.json(updatedEvent);
     } catch (error) {
       next(error);

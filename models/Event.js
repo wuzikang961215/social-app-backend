@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 // Define the Event schema with its fields and validations
 const EventSchema = new mongoose.Schema({
   title: { type: String, required: true },
-  startTime: { type: Date, required: true },
+  startTime: { type: String, required: true }, // Store as local time string YYYY-MM-DDTHH:mm
   durationMinutes: { type: Number, required: true }, // eg: 90 表示1.5小时
   location: { type: String, required: true },
   maxParticipants: { type: Number, required: true },
@@ -34,6 +34,12 @@ const EventSchema = new mongoose.Schema({
   // Automatically add createdAt and updatedAt timestamps
   timestamps: true 
 });
+
+// Add indexes for better query performance
+EventSchema.index({ expired: 1, startTime: -1 });
+EventSchema.index({ category: 1 });
+EventSchema.index({ creator: 1 });
+EventSchema.index({ 'participants.user': 1 });
 
 // Configure how the document is transformed when converted to JSON
 EventSchema.set("toJSON", {

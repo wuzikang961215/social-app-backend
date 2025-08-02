@@ -17,7 +17,8 @@ class UserController {
       if (!user) return res.status(404).json({ message: "用户不存在" });
       res.json(user);
     } catch (error) {
-      res.status(500).json({ message: "服务器错误" });
+      console.error("Error in getUserById:", error);
+      res.status(500).json({ message: "服务器错误", error: error.message });
     }
   }
 
