@@ -24,7 +24,12 @@ class UserController {
 
   async updateUser(req, res) {
     try {
-      const updatedUser = await userService.updateUser(req.params.id, req.body, req.user.role);
+      const updatedUser = await userService.updateUser(
+        req.params.id, 
+        req.body, 
+        req.user.id,
+        req.user.role
+      );
       res.json({ message: "用户信息更新成功", user: updatedUser });
     } catch (error) {
       res.status(403).json({ message: error.message });

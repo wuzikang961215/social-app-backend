@@ -28,6 +28,11 @@ const validateRegister = [
   body('password')
     .isLength({ min: 6 })
     .withMessage('密码至少需要6个字符'),
+  body('mbti')
+    .optional()
+    .isIn(['INTJ', 'INTP', 'ENTJ', 'ENTP', 'INFJ', 'INFP', 'ENFJ', 'ENFP', 
+           'ISTJ', 'ISFJ', 'ESTJ', 'ESFJ', 'ISTP', 'ISFP', 'ESTP', 'ESFP'])
+    .withMessage('请选择有效的MBTI类型'),
   body('idealBuddy')
     .optional()
     .trim()
@@ -195,6 +200,11 @@ const validateUpdateProfile = [
     .withMessage('用户名长度应在2-20个字符之间')
     .matches(/^[a-zA-Z0-9_]+$/)
     .withMessage('用户名只能包含字母、数字和下划线'),
+  body('mbti')
+    .optional()
+    .isIn(['INTJ', 'INTP', 'ENTJ', 'ENTP', 'INFJ', 'INFP', 'ENFJ', 'ENFP', 
+           'ISTJ', 'ISFJ', 'ESTJ', 'ESFJ', 'ISTP', 'ISFP', 'ESTP', 'ESFP'])
+    .withMessage('请选择有效的MBTI类型'),
   body('idealBuddy')
     .optional()
     .trim()

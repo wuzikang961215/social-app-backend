@@ -44,24 +44,44 @@ function formatToSydneyString(date) {
 function parseSydneyString(timeString) {
   if (!timeString) return null;
   
-  // Add seconds if not present
-  const normalizedString = timeString.includes(':00:00') 
-    ? timeString 
-    : timeString.includes('T') && timeString.split('T')[1].split(':').length === 2
-      ? timeString + ':00'
-      : timeString;
+  // Parse the components
+  const [datePart, timePart] = timeString.split('T');
+  const [year, month, day] = datePart.split('-');
+  const [hour, minute] = timePart.split(':');
   
-  // Parse as Sydney time
-  const [datePart, timePart] = normalizedString.split('T');
-  const [year, month, day] = datePart.split('-').map(Number);
-  const [hour, minute, second = 0] = timePart.split(':').map(Number);
+  // Create a date in UTC first
+  const utcDate = new Date(Date.UTC(
+    parseInt(year),
+    parseInt(month) - 1, // JavaScript months are 0-indexed
+    parseInt(day),
+    parseInt(hour),
+    parseInt(minute),
+    0
+  ));
   
-  // Create date in Sydney timezone
-  const sydneyDate = new Date(
-    new Date(`${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}T${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}:${second.toString().padStart(2, '0')}.000+10:00`)
-  );
+  // Get Sydney offset for this specific date
+  // Sydney is UTC+10 (AEST) or UTC+11 (AEDT)
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Australia/Sydney',
+    hour: 'numeric',
+    hour12: false
+  });
   
-  return sydneyDate;
+  // Format the UTC date as Sydney time to find the offset
+  const sydneyHour = parseInt(formatter.format(utcDate));
+  const utcHour = utcDate.getUTCHours();
+  
+  // Calculate offset (accounting for day boundary)
+  let offset = sydneyHour - utcHour;
+  if (offset > 12) offset -= 24;
+  if (offset < -12) offset += 24;
+  
+  // Adjust the UTC date by subtracting the offset to get the correct UTC time
+  // when the Sydney time is as specified
+  const correctUTCTime = new Date(utcDate);
+  correctUTCTime.setUTCHours(correctUTCTime.getUTCHours() - offset);
+  
+  return correctUTCTime;
 }
 
 /**
@@ -111,7 +131,9 @@ function formatToHumanReadable(timeString) {
   const hour = parts.find(p => p.type === 'hour').value;
   const minute = parts.find(p => p.type === 'minute').value;
   
-  const weekday = weekdays[date.getDay()];
+  // Get the weekday in Sydney timezone
+  const sydneyDate = new Date(date.toLocaleString('en-US', { timeZone: 'Australia/Sydney' }));
+  const weekday = weekdays[sydneyDate.getDay()];
   
   return `${month}月${day}日 ${weekday} ${hour}:${minute}`;
 }

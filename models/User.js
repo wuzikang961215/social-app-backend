@@ -6,7 +6,17 @@ const UserSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
 
-  personality: String,
+  // Legacy field - not used in new registrations but kept for existing users
+  personality: { 
+    type: String,
+    select: false // Won't be included in queries by default
+  },
+  mbti: { 
+    type: String, 
+    enum: ['INTJ', 'INTP', 'ENTJ', 'ENTP', 'INFJ', 'INFP', 'ENFJ', 'ENFP', 
+           'ISTJ', 'ISFJ', 'ESTJ', 'ESFJ', 'ISTP', 'ISFP', 'ESTP', 'ESFP'],
+    default: null 
+  },
   interests: [String],
   tags: [String],
 

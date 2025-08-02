@@ -70,6 +70,11 @@ const globalLimiter = rateLimit({
   message: '请求过于频繁，请稍后再试',
   standardHeaders: true,
   legacyHeaders: false,
+  // Custom key generator to handle trusted proxy setting
+  keyGenerator: (req) => {
+    // Use the IP address from the request
+    return req.ip || req.connection.remoteAddress;
+  },
   skip: (req) => {
     // Skip rate limiting for certain paths in development
     if (process.env.NODE_ENV !== 'production') {
@@ -104,6 +109,11 @@ const authLimiter = rateLimit({
   max: 5, // Limit each IP to 5 requests per windowMs for auth routes
   message: '登录尝试次数过多，请15分钟后再试',
   skipSuccessfulRequests: true, // Don't count successful requests
+  // Custom key generator to handle trusted proxy setting
+  keyGenerator: (req) => {
+    // Use the IP address from the request
+    return req.ip || req.connection.remoteAddress;
+  }
 });
 
 app.use("/api/events", eventRoutes);

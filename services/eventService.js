@@ -43,7 +43,7 @@ class EventService {
   // Find manageable events for a user
   async findManageableEvents(userId) {
     const events = await Event.find({ creator: userId })
-      .populate('participants.user', 'username idealBuddy whyJoin interests')
+      .populate('participants.user', 'username idealBuddy whyJoin interests mbti')
       .populate('creator', 'username email');
 
     return events
@@ -62,7 +62,7 @@ class EventService {
   // Find events created by user
   async findEventsByCreator(userId) {
     return Event.find({ creator: userId })
-      .populate('participants.user', 'username idealBuddy whyJoin interests')
+      .populate('participants.user', 'username idealBuddy whyJoin interests mbti')
       .populate('creator', 'username email');
   }
 
@@ -71,7 +71,7 @@ class EventService {
     const events = await Event.find({
       'participants.user': userId
     })
-      .populate('participants.user', 'username idealBuddy whyJoin interests')
+      .populate('participants.user', 'username idealBuddy whyJoin interests mbti')
       .populate('creator', 'username email');
 
     return events
@@ -146,6 +146,15 @@ class EventService {
       filteredUpdate,
       { new: true, runValidators: true }
     ).populate('creator', 'username');
+    
+    // Check if event should be expired based on new time
+    if (updateData.startTime || updateData.durationMinutes) {
+      const shouldBeExpired = hasEventExpired(updatedEvent.startTime, updatedEvent.durationMinutes);
+      if (shouldBeExpired !== updatedEvent.expired) {
+        updatedEvent.expired = shouldBeExpired;
+        await updatedEvent.save();
+      }
+    }
     
     // Send notifications if time or location changed
     if ((timeChanged || locationChanged) && event.participants.length > 0) {
@@ -319,6 +328,35 @@ class EventService {
 
     participant.status = attended ? 'checkedIn' : 'noShow';
     await event.save();
+
+    // Send notification when user is checked in
+    if (attended) {
+      const creator = await User.findById(creatorId).select('username');
+      
+      // Get user's participation count after this check-in
+      // Count all events where user has checkedIn status (will include this one after save)
+      const participatedEvents = await Event.find({
+        'participants.user': userId,
+        'participants.status': 'checkedIn'
+      });
+      const participationCount = participatedEvents.length;
+      
+      await Notification.create({
+        recipient: userId,
+        sender: creatorId,
+        type: 'event_checkin',
+        title: '活动签到确认！🎉',
+        message: `太棒了！${creator.username} 已确认你参加了活动「${event.title}」。你的参与活动数 +1，总计参与 ${participationCount} 场活动！继续参加活动，交更多朋友吧～`,
+        eventId: event._id,
+        metadata: {
+          eventTitle: event.title,
+          eventTime: event.startTime,
+          eventLocation: event.location,
+          organizerName: creator.username,
+          participationCount: participationCount
+        }
+      });
+    }
 
     return Event.findById(event.id)
       .populate('participants.user', 'username')

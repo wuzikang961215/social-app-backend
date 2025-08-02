@@ -1,5 +1,6 @@
 const statsService = require("../services/statsService");
 const Event = require('../models/Event');
+const { hasEventExpired } = require('../utils/dateUtils');
 
 class StatsController {
   async getTopInterests(req, res) {
@@ -32,7 +33,10 @@ class StatsController {
           p.user.toString() === userId
         );
         
-        if (participant && event.expired) {
+        // Check if event has actually expired based on time, not just the expired flag
+        const isExpired = hasEventExpired(event.startTime, event.durationMinutes);
+        
+        if (participant && isExpired) {
           if (participant.status === 'checkedIn') {
             checkedInCount++;
           } else if (participant.status === 'noShow') {
