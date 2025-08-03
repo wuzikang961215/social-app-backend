@@ -160,11 +160,12 @@ class EventService {
     if ((timeChanged || locationChanged) && event.participants.length > 0) {
       try {
         const notificationService = require('./notificationService');
-        const approvedParticipants = event.participants
-          .filter(p => p.status === 'approved')
+        // Notify both approved and pending participants
+        const participantsToNotify = event.participants
+          .filter(p => p.status === 'approved' || p.status === 'pending')
           .map(p => p.user);
         
-        if (approvedParticipants.length > 0) {
+        if (participantsToNotify.length > 0) {
           let message = `活动「${event.title}」`;
           const metadata = {
             eventTitle: event.title
@@ -183,7 +184,7 @@ class EventService {
           }
           
           await notificationService.createBulkNotifications(
-            approvedParticipants,
+            participantsToNotify,
             message,
             'event_update',
             { 
@@ -345,7 +346,7 @@ class EventService {
         recipient: userId,
         sender: creatorId,
         type: 'event_checkin',
-        title: '活动签到确认！🎉',
+        title: '活动签到确认',
         message: `太棒了！${creator.username} 已确认你参加了活动「${event.title}」。你的参与活动数 +1，总计参与 ${participationCount} 场活动！继续参加活动，交更多朋友吧～`,
         eventId: event._id,
         metadata: {

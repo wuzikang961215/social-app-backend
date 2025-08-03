@@ -34,7 +34,13 @@ class AuthService {
     if (!isMatch) throw new Error("密码错误");
 
     const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: "7d" });
-    return { token, user };
+    
+    // Return clean user object
+    const userObj = user.toObject();
+    delete userObj.password;
+    userObj.id = userObj._id;
+    
+    return { token, user: userObj };
   }
 }
 
