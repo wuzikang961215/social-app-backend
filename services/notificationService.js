@@ -64,19 +64,59 @@ class NotificationService {
     return notification;
   }
 
-  // Create bulk notifications for multiple recipients
+  // Create bulk notifications for multiple recipients with personalization
   async createBulkNotifications(recipientIds, message, type, relatedData = {}) {
-    const notifications = recipientIds.map(recipientId => ({
-      recipient: recipientId,
-      message,
-      type,
-      title: relatedData.title || '活动更新通知', // Default title if not provided
-      ...relatedData,
-      read: false
-    }));
-
-    const result = await Notification.insertMany(notifications);
-    return result;
+    const BATCH_SIZE = 100; // Process users in batches to avoid memory issues
+    const User = require('../models/User');
+    const notifications = [];
+    
+    // Process recipients in batches for scalability
+    for (let i = 0; i < recipientIds.length; i += BATCH_SIZE) {
+      const batchIds = recipientIds.slice(i, i + BATCH_SIZE);
+      
+      // Fetch user names for this batch only
+      const users = await User.find(
+        { _id: { $in: batchIds } }, 
+        'username',
+        { lean: true } // Use lean for better performance
+      );
+      
+      const userMap = new Map(
+        users.map(user => [user._id.toString(), user.username])
+      );
+      
+      // Create notifications for this batch
+      const batchNotifications = batchIds.map(recipientId => {
+        const userName = userMap.get(recipientId.toString()) || '朋友';
+        // Add personalization to the message
+        const personalizedMessage = `${userName}，${message}`;
+        
+        return {
+          recipient: recipientId,
+          message: personalizedMessage,
+          type,
+          title: relatedData.title || '活动更新通知',
+          eventId: relatedData.eventId,
+          metadata: {
+            ...relatedData.metadata,
+            userName
+          },
+          read: false
+        };
+      });
+      
+      notifications.push(...batchNotifications);
+    }
+    
+    // Insert all notifications in batches for better performance
+    const results = [];
+    for (let i = 0; i < notifications.length; i += BATCH_SIZE) {
+      const batch = notifications.slice(i, i + BATCH_SIZE);
+      const result = await Notification.insertMany(batch, { ordered: false });
+      results.push(...result);
+    }
+    
+    return results;
   }
 }
 

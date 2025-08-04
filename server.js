@@ -5,7 +5,7 @@ const cors = require("cors");
 const morgan = require("morgan");
 const helmet = require("helmet");
 const mongoSanitize = require("express-mongo-sanitize");
-const rateLimit = require("express-rate-limit");
+const { rateLimit } = require("express-rate-limit");
 
 dotenv.config(); // 读取 .env 文件
 
@@ -63,23 +63,24 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-// Global rate limiting
+// Global rate limiting - more lenient for mobile app usage
 const globalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === 'production' ? 100 : 1000, // More lenient in development
+  windowMs: 5 * 60 * 1000, // 5 minutes (reduced from 15)
+  max: process.env.NODE_ENV === 'production' ? 300 : 1000, // 300 requests per 5 minutes
   message: '请求过于频繁，请稍后再试',
   standardHeaders: true,
   legacyHeaders: false,
-  // Custom key generator to handle trusted proxy setting
-  keyGenerator: (req) => {
-    // Use the IP address from the request
-    return req.ip || req.connection.remoteAddress;
-  },
+  // Remove custom keyGenerator to use default which handles IPv6 properly
   skip: (req) => {
     // Skip rate limiting for certain paths in development
     if (process.env.NODE_ENV !== 'production') {
       const exemptPaths = ['/api/notifications/unread-count', '/api/events/manage', '/api/users/'];
       return exemptPaths.some(path => req.path.startsWith(path));
+    }
+    // In production, be more lenient with authenticated users
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+      // Give authenticated users a higher limit by skipping 50% of the time
+      return Math.random() < 0.5;
     }
     return false;
   }
@@ -91,6 +92,7 @@ const authRoutes = require("./routes/authRoutes");
 const userRoutes = require("./routes/userRoutes");
 const statsRoutes = require("./routes/statsRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
+const treeHoleRoutes = require("./routes/treeHoleRoutes");
 
 // Apply global rate limiting
 app.use('/api/', globalLimiter);
@@ -109,11 +111,7 @@ const authLimiter = rateLimit({
   max: 5, // Limit each IP to 5 requests per windowMs for auth routes
   message: '登录尝试次数过多，请15分钟后再试',
   skipSuccessfulRequests: true, // Don't count successful requests
-  // Custom key generator to handle trusted proxy setting
-  keyGenerator: (req) => {
-    // Use the IP address from the request
-    return req.ip || req.connection.remoteAddress;
-  }
+  // Use default key generator which handles IPv6 properly
 });
 
 app.use("/api/events", eventRoutes);
@@ -121,6 +119,7 @@ app.use("/api/auth", authLimiter, authRoutes);    // 登录注册 with stricter 
 app.use("/api/users", userRoutes);   // 用户信息
 app.use("/api/stats", statsRoutes);  // 统计/兴趣/邮箱名查重
 app.use("/api/notifications", notificationRoutes);  // 通知
+app.use("/api/tree-hole", treeHoleRoutes);  // 树洞匿名发帖
 
 app.use(morgan("dev"));
 

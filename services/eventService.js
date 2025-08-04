@@ -285,20 +285,25 @@ class EventService {
     
     // Only create notification for approval
     if (approve) {
-      const creator = await User.findById(creatorId);
-      if (creator) {
+      const [creator, recipient] = await Promise.all([
+        User.findById(creatorId),
+        User.findById(userId, 'username')
+      ]);
+      
+      if (creator && recipient) {
         await Notification.create({
           recipient: userId,
           sender: creatorId,
           type: 'event_approved',
           title: '活动申请已通过',
-          message: `恭喜！你申请参加的活动「${event.title}」已通过审核`,
+          message: `${recipient.username}，恭喜！你申请参加的活动「${event.title}」已通过审核`,
           eventId: event._id,
           metadata: {
             eventTitle: event.title,
             eventTime: event.startTime,
             eventLocation: event.location,
-            userName: creator.username
+            userName: recipient.username,
+            organizerName: creator.username
           }
         });
       }
@@ -332,7 +337,10 @@ class EventService {
 
     // Send notification when user is checked in
     if (attended) {
-      const creator = await User.findById(creatorId).select('username');
+      const [creator, recipient] = await Promise.all([
+        User.findById(creatorId).select('username'),
+        User.findById(userId, 'username')
+      ]);
       
       // Get user's participation count after this check-in
       // Count all events where user has checkedIn status (will include this one after save)
@@ -342,21 +350,24 @@ class EventService {
       });
       const participationCount = participatedEvents.length;
       
-      await Notification.create({
-        recipient: userId,
-        sender: creatorId,
-        type: 'event_checkin',
-        title: '活动签到确认',
-        message: `太棒了！${creator.username} 已确认你参加了活动「${event.title}」。你的参与活动数 +1，总计参与 ${participationCount} 场活动！继续参加活动，交更多朋友吧～`,
-        eventId: event._id,
-        metadata: {
-          eventTitle: event.title,
-          eventTime: event.startTime,
-          eventLocation: event.location,
-          organizerName: creator.username,
-          participationCount: participationCount
-        }
-      });
+      if (creator && recipient) {
+        await Notification.create({
+          recipient: userId,
+          sender: creatorId,
+          type: 'event_checkin',
+          title: '活动签到确认',
+          message: `${recipient.username}，恭喜！你参加了「${event.title}」，参加活动总数 +1，累计：${participationCount} 场`,
+          eventId: event._id,
+          metadata: {
+            eventTitle: event.title,
+            eventTime: event.startTime,
+            eventLocation: event.location,
+            userName: recipient.username,
+            organizerName: creator.username,
+            participationCount: participationCount
+          }
+        });
+      }
     }
 
     return Event.findById(event.id)
