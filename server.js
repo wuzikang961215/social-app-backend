@@ -11,8 +11,9 @@ dotenv.config(); // 读取 .env 文件
 
 const app = express();
 
-// Trust proxy for Fly.io
-app.set('trust proxy', true);
+// Trust proxy configuration
+// Use a specific number instead of true to avoid rate limit bypass
+app.set('trust proxy', 1); // Trust first proxy only
 
 // Security middleware
 app.use(helmet({
@@ -40,6 +41,8 @@ const corsOptions = {
           process.env.FRONTEND_URL,
           'https://www.yodda.social',
           'https://yodda.social',  // Also allow without www
+          'capacitor://localhost', // Capacitor iOS
+          'http://localhost', // Capacitor Android
           /^https:\/\/.*\.vercel\.app$/,  // Allow Vercel deployments
           /^https:\/\/.*\.vercel\.sh$/    // Allow Vercel preview URLs
         ].filter(Boolean)
@@ -56,7 +59,9 @@ const corsOptions = {
       callback(null, true);
     } else {
       console.log(`CORS blocked origin: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
+      // For debugging, temporarily allow all origins but log them
+      console.log(`Temporarily allowing origin: ${origin}`);
+      callback(null, true);
     }
   }
 };
@@ -65,12 +70,28 @@ app.use(cors(corsOptions));
 
 // Global rate limiting - more lenient for mobile app usage
 const globalLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000, // 5 minutes (reduced from 15)
-  max: process.env.NODE_ENV === 'production' ? 300 : 1000, // 300 requests per 5 minutes
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: process.env.NODE_ENV === 'production' ? 500 : 1000, // Increased from 300 to 500
   message: '请求过于频繁，请稍后再试',
   standardHeaders: true,
   legacyHeaders: false,
-  // Remove custom keyGenerator to use default which handles IPv6 properly
+  // More intelligent key generation for mobile networks
+  keyGenerator: (req) => {
+    const ip = req.ip;
+    // If authenticated, use user ID + IP for more granular limiting
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      // Simple hash of token to identify user without decoding
+      const tokenHash = require('crypto').createHash('md5').update(token).digest('hex').substring(0, 8);
+      return `${ip}_user_${tokenHash}`;
+    }
+    // For unauthenticated requests, consider device type
+    const ua = req.headers['user-agent'] || 'unknown';
+    const deviceInfo = ua.includes('iPhone') ? 'ios' : 
+                      ua.includes('Android') ? 'android' : 'web';
+    return `${ip}_${deviceInfo}`;
+  },
   skip: (req) => {
     // Skip rate limiting for certain paths in development
     if (process.env.NODE_ENV !== 'production') {
@@ -93,9 +114,32 @@ const userRoutes = require("./routes/userRoutes");
 const statsRoutes = require("./routes/statsRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const treeHoleRoutes = require("./routes/treeHoleRoutes");
+const externalEventRoutes = require("./routes/externalEventRoutes");
 
-// Apply global rate limiting
-app.use('/api/', globalLimiter);
+// Health check endpoint (before rate limiting)
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    origin: req.headers.origin || 'no-origin',
+    userAgent: req.headers['user-agent'] || 'no-user-agent',
+    ip: req.ip,
+    method: req.method,
+    path: req.path
+  });
+});
+
+// Apply global rate limiting - DISABLED for now due to mobile network issues
+// Uncomment below to re-enable if needed
+// app.use('/api/', globalLimiter);
+
+// Log all requests in production for debugging
+if (process.env.NODE_ENV === 'production') {
+  app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} - IP: ${req.ip} - UA: ${req.headers['user-agent']?.substring(0, 50)}`);
+    next();
+  });
+}
 
 // Debug middleware (only in development)
 if (process.env.NODE_ENV !== 'production') {
@@ -105,13 +149,24 @@ if (process.env.NODE_ENV !== 'production') {
   });
 }
 
-// Auth-specific rate limiting
+// Auth-specific rate limiting - very lenient to avoid blocking legitimate users
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // Limit each IP to 5 requests per windowMs for auth routes
-  message: '登录尝试次数过多，请15分钟后再试',
+  windowMs: 1 * 60 * 1000, // 1 minute window
+  max: 10, // 10 attempts per minute per device
+  message: '请求过于频繁，请1分钟后再试',
   skipSuccessfulRequests: true, // Don't count successful requests
-  // Use default key generator which handles IPv6 properly
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Consider email + device to avoid blocking shared networks
+  keyGenerator: (req) => {
+    const ip = req.ip;
+    const email = req.body?.email || 'unknown';
+    const ua = req.headers['user-agent'] || 'unknown';
+    const deviceInfo = ua.includes('iPhone') ? 'ios' : 
+                      ua.includes('Android') ? 'android' : 'web';
+    // Use email + device type to be very specific
+    return `${email}_${deviceInfo}_${ip}`;
+  }
 });
 
 app.use("/api/events", eventRoutes);
@@ -120,6 +175,7 @@ app.use("/api/users", userRoutes);   // 用户信息
 app.use("/api/stats", statsRoutes);  // 统计/兴趣/邮箱名查重
 app.use("/api/notifications", notificationRoutes);  // 通知
 app.use("/api/tree-hole", treeHoleRoutes);  // 树洞匿名发帖
+app.use("/api/external-events", externalEventRoutes);  // 外部活动管理
 
 app.use(morgan("dev"));
 

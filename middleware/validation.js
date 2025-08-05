@@ -87,7 +87,7 @@ const validateCreateEvent = [
     .isLength({ max: 1000 })
     .withMessage('活动描述不能超过1000个字符'),
   body('startTime')
-    .matches(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)
+    .isISO8601({ strict: false })
     .withMessage('开始时间格式不正确'),
   body('durationMinutes')
     .isInt({ min: 15, max: 1440 })
