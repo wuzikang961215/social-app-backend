@@ -28,10 +28,10 @@ class AuthService {
 
   async login(email, password) {
     const user = await User.findOne({ email });
-    if (!user) throw new Error("用户不存在");
+    if (!user) throw new Error("邮箱或密码错误"); // Don't reveal which one is wrong
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) throw new Error("密码错误");
+    if (!isMatch) throw new Error("邮箱或密码错误"); // Same message for security
 
     const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: "7d" });
     

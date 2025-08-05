@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const eventController = require('../controllers/eventController');
 const authMiddleware = require('../middleware/authMiddleware');
-const rateLimiter = require('../middleware/rateLimiter');
 const { 
   validateCreateEvent, 
   validateJoinEvent,
@@ -17,8 +16,8 @@ router.get('/manage', authMiddleware, eventController.getManageableEvents);
 router.get('/my-created', authMiddleware, eventController.getCreatedEvents);
 router.get('/my-participated', authMiddleware, eventController.getParticipatedEvents);
 router.get('/:id', authMiddleware, validateJoinEvent, eventController.getEventById);
-router.post('/', authMiddleware, rateLimiter, validateCreateEvent, eventController.createEvent);
-router.patch('/:id', authMiddleware, rateLimiter, validateUpdateEvent, eventController.updateEvent);
+router.post('/', authMiddleware, validateCreateEvent, eventController.createEvent);
+router.patch('/:id', authMiddleware, validateUpdateEvent, eventController.updateEvent);
 router.delete('/:id', authMiddleware, validateJoinEvent, eventController.deleteEvent);
 
 // Participant management routes

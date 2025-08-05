@@ -75,23 +75,6 @@ const globalLimiter = rateLimit({
   message: '请求过于频繁，请稍后再试',
   standardHeaders: true,
   legacyHeaders: false,
-  // More intelligent key generation for mobile networks
-  keyGenerator: (req) => {
-    const ip = req.ip;
-    // If authenticated, use user ID + IP for more granular limiting
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.split(' ')[1];
-      // Simple hash of token to identify user without decoding
-      const tokenHash = require('crypto').createHash('md5').update(token).digest('hex').substring(0, 8);
-      return `${ip}_user_${tokenHash}`;
-    }
-    // For unauthenticated requests, consider device type
-    const ua = req.headers['user-agent'] || 'unknown';
-    const deviceInfo = ua.includes('iPhone') ? 'ios' : 
-                      ua.includes('Android') ? 'android' : 'web';
-    return `${ip}_${deviceInfo}`;
-  },
   skip: (req) => {
     // Skip rate limiting for certain paths in development
     if (process.env.NODE_ENV !== 'production') {
@@ -157,14 +140,26 @@ const authLimiter = rateLimit({
   skipSuccessfulRequests: true, // Don't count successful requests
   standardHeaders: true,
   legacyHeaders: false,
+  validate: false, // Disable all validations
   // Consider email + device to avoid blocking shared networks
   keyGenerator: (req) => {
-    const ip = req.ip;
+    // Handle IPv6 safely
+    let ip = req.ip || 'unknown';
+    // Strip IPv4-mapped IPv6 prefix
+    if (ip.startsWith('::ffff:')) {
+      ip = ip.substring(7);
+    }
+    // Handle localhost IPv6
+    if (ip === '::1') {
+      ip = 'localhost';
+    }
+    
     const email = req.body?.email || 'unknown';
     const ua = req.headers['user-agent'] || 'unknown';
     const deviceInfo = ua.includes('iPhone') ? 'ios' : 
                       ua.includes('Android') ? 'android' : 'web';
-    // Use email + device type to be very specific
+    
+    // Use email + device type + IP for granularity
     return `${email}_${deviceInfo}_${ip}`;
   }
 });
