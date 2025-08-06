@@ -4,7 +4,7 @@ const User = require("../models/User");
 
 class AuthService {
   async register(userData) {
-    const { username, email, password, personality, mbti, interests, tags, whyJoin, idealBuddy } = userData;
+    const { username, email, password, personality, mbti, interests, tags, whyJoin, idealBuddy, expectEvent } = userData;
   
     const existingUser = await User.findOne({ $or: [{ username }, { email }] });
     if (existingUser) throw new Error("用户名或邮箱已被使用");
@@ -15,10 +15,11 @@ class AuthService {
       password, // 👈 原始密码，schema 会自动 hash
       personality,
       mbti,
-      interests,
-      tags,
+      interests: interests || [],
+      tags: tags || [],
       whyJoin,
       idealBuddy,
+      expectEvent,
     });
   
     await newUser.save();

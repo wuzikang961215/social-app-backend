@@ -10,7 +10,17 @@ class AuthController {
   async register(req, res) {
     try {
       const user = await authService.register(req.body);
-      res.status(201).json(user);
+      
+      // Generate token for the new user
+      const jwt = require('jsonwebtoken');
+      const token = jwt.sign(
+        { id: user._id, role: user.role }, 
+        process.env.JWT_SECRET, 
+        { expiresIn: "7d" }
+      );
+      
+      // Return both token and user like login does
+      res.status(201).json({ token, user });
     } catch (error) {
       res.status(400).json({ message: error.message });
     }

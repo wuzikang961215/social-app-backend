@@ -4,37 +4,23 @@
 
 ⚠️  Email service not configured. Running in development mode.
 ⚠️  To enable email sending, please configure EMAIL_USER and EMAIL_PASS in .env file
-🚀 Server running on port 3002
-✅ MongoDB Connected
-🕒 正在检查过期活动... 当前时间: 2025-08-05T21:38:45.303Z
-📅 活动过期检查调度器已启动 (每小时运行一次)
-🧹 外部活动清理调度器已启动 (每天凌晨3点运行)
-📋 找到 3 个未过期的活动
-  - 活动「周日攀岩聚会」: 开始时间 2025-08-10T15:30, 时长 120分钟, 是否过期: false
-  - 活动「周六女巫集市探索」: 开始时间 2025-08-09T13:40, 时长 140分钟, 是否过期: false
-  - 活动「周五年轻IT职场人社交活动」: 开始时间 2025-08-08T17:30, 时长 270分钟, 是否过期: false
-✅ 没有需要更新的活动
-GET /api/events/manage
-GET /api/events/manage
-GET /api/notifications/unread-count
-GET /api/events/manage
-GET /api/notifications/unread-count
-POST /api/auth/login
-POST /api/auth/login
-POST /api/auth/login
-POST /api/auth/login
-POST /api/auth/login
-POST /api/auth/login
-POST /api/auth/login
-POST /api/auth/login
-POST /api/auth/login
-POST /api/auth/login
-POST /api/auth/login
-POST /api/auth/login
-POST /api/auth/login
-GET /api/events/manage
-GET /api/events/manage
-GET /api/notifications/unread-count
-GET /api/events/manage
-GET /api/notifications/unread-count
-POST /api/auth/login
+node:events:498
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3002
+    at Server.setupListenHandle [as _listen2] (node:net:1902:16)
+    at listenInCluster (node:net:1959:12)
+    at doListen (node:net:2133:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21)
+Emitted 'error' event on Server instance at:
+    at emitErrorNT (node:net:1938:8)
+    at process.processTicksAndRejections (node:internal/process/task_queues:82:21) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3002
+}
+
+Node.js v22.6.0

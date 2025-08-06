@@ -22,6 +22,7 @@ const UserSchema = new mongoose.Schema({
 
   whyJoin: String,
   idealBuddy: String,
+  expectEvent: String, // What they expect from Yodda events
 
   role: { type: String, enum: ["user", "admin"], default: "user" },
 }, { timestamps: true });

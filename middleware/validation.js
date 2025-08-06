@@ -4,8 +4,12 @@ const { body, param, query, validationResult } = require('express-validator');
 const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
+    // Get the first error message for better user experience
+    const firstError = errors.array()[0];
+    const errorMessage = firstError.msg || '输入数据验证失败';
+    
     return res.status(400).json({ 
-      message: '输入数据验证失败',
+      message: errorMessage,
       errors: errors.array() 
     });
   }
@@ -53,6 +57,11 @@ const validateRegister = [
     .trim()
     .isLength({ max: 200 })
     .withMessage('加入理由不能超过200个字符'),
+  body('expectEvent')
+    .optional()
+    .trim()
+    .isLength({ max: 200 })
+    .withMessage('活动期待不能超过200个字符'),
   handleValidationErrors
 ];
 
